@@ -21,11 +21,12 @@ jobs:
     steps:
       - id: set-matrix
         run: |
-          apps=()
-          if [ "${{ github.event.inputs.build_api }}" = "true" ]; then apps+=('"api"'); fi
-          if [ "${{ github.event.inputs.build_frontend }}" = "true" ]; then apps+=('"frontend"'); fi
-          if [ "${{ github.event.inputs.build_admin }}" = "true" ]; then apps+=('"admin"'); fi
-          json="{\"service\":[${apps[*]}]}"
+          services=()
+          if [ "${{ github.event.inputs.build_api }}" = "true" ]; then services+=("api"); fi
+          if [ "${{ github.event.inputs.build_frontend }}" = "true" ]; then services+=("frontend"); fi
+          if [ "${{ github.event.inputs.build_admin }}" = "true" ]; then services+=("admin"); fi
+
+          json=$(jq -nc --argjson arr "$(printf '%s\n' "${services[@]}" | jq -R . | jq -s .)" '{service:$arr}')
           echo "matrix=$json" >> $GITHUB_OUTPUT
 
   build:
