@@ -40,3 +40,14 @@ jobs:
 
       - name: Build
         run: echo "Building ${{ matrix.service }}"
+
+      - name: Build but only if admin
+        if: github.event.inputs.build_admin == 'true'
+        run: echo "Building admin aaaa"
+  
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.build_frontend == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
