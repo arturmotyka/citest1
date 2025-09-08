@@ -42,7 +42,7 @@ jobs:
         run: echo "Building ${{ matrix.service }}"
 
       - name: Build but only if admin
-        if: matrix.service == 'true'
+        if: matrix.service == 'admin'
         run: echo "Building admin aaaa"
   
   deploy-frontend:
