@@ -42,7 +42,7 @@ jobs:
         run: echo "Building ${{ matrix.service }}"
 
       - name: Build but only if admin
-        if: github.event.inputs.build_admin == 'true'
+        if: matrix.service == 'true'
         run: echo "Building admin aaaa"
   
   deploy-frontend:
