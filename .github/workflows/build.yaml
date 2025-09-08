@@ -1,0 +1,41 @@
+name: Build Apps
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_api:
+        type: boolean
+        default: true
+      build_frontend:
+        type: boolean
+        default: true
+      build_admin:
+        type: boolean
+        default: true
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          apps=()
+          if [ "${{ github.event.inputs.build_api }}" = "true" ]; then apps+=('"api"'); fi
+          if [ "${{ github.event.inputs.build_frontend }}" = "true" ]; then apps+=('"frontend"'); fi
+          if [ "${{ github.event.inputs.build_admin }}" = "true" ]; then apps+=('"admin"'); fi
+          json="{\"service\":[${apps[*]}]}"
+          echo "matrix=$json" >> $GITHUB_OUTPUT
+
+  build:
+    needs: prepare-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: echo "Building ${{ matrix.service }}"
