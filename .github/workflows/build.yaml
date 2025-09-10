@@ -121,7 +121,7 @@ jobs:
   
   deploy-frontend:
     runs-on: ubuntu-latest
-    if: github.event.inputs.deploy_frontend == 'true'
+    if: needs.prepare.outputs.deploy_frontend == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
