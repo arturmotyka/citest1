@@ -1,30 +1,104 @@
 name: Build Apps
 
 on:
+  push:
   workflow_dispatch:
     inputs:
-      build_api:
+      deploy_api:
         type: boolean
         default: true
-      build_frontend:
+      deploy_frontend:
         type: boolean
         default: true
-      build_admin:
+      deploy_admin:
         type: boolean
         default: true
 
 jobs:
+  prepare:
+    name: Prepare deploy flags
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_api: ${{ steps.set.outputs.deploy_api }}
+      deploy_frontend: ${{ steps.set.outputs.deploy_frontend }}
+      deploy_admin: ${{ steps.set.outputs.deploy_admin }}
+      tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # szybka detekcja zmian w katalogach: api/, frontend/, admin/
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            api:
+              - 'api/**'
+            frontend:
+              - 'frontend/**'
+            admin:
+              - 'packages/apps/admin/**/*'
+              - 'packages/shared/**/*'
+              - 'admin/**'
+
+      - name: Resolve flags (inputs vs changed paths)
+        id: set
+        env:
+          # przekazujemy outputs z paths-filter i ewentualne workflow inputs do środowiska
+          PF_API: ${{ steps.filter.outputs.api }}
+          PF_FRONTEND: ${{ steps.filter.outputs.frontend }}
+          PF_ADMIN: ${{ steps.filter.outputs.admin }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_CUSTOM_TAG: ${{ github.event.inputs.custom_tag }}
+          INPUT_DEPLOY_API: ${{ github.event.inputs.deploy_api }}
+          INPUT_DEPLOY_FRONTEND: ${{ github.event.inputs.deploy_frontend }}
+          INPUT_DEPLOY_ADMIN: ${{ github.event.inputs.deploy_admin }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          # Domyślne wartości
+          deploy_api=false
+          deploy_frontend=false
+          deploy_admin=false
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # przy manualnym uruchomieniu honorujemy inputy (string 'true'/'false')
+            [ "$INPUT_DEPLOY_API" = "true" ] && deploy_api=true || deploy_api=false
+            [ "$INPUT_DEPLOY_FRONTEND" = "true" ] && deploy_frontend=true || deploy_frontend=false
+            [ "$INPUT_DEPLOY_ADMIN" = "true" ] && deploy_admin=true || deploy_admin=false
+            tag="$INPUT_CUSTOM_TAG"
+          else
+            # przy push: ustawiamy flagi na podstawie zmienionych ścieżek
+            [ "$PF_API" = "true" ] && deploy_api=true
+            [ "$PF_FRONTEND" = "true" ] && deploy_frontend=true
+            [ "$PF_ADMIN" = "true" ] && deploy_admin=true
+            # jeśli nic nie zmieniono w żadnej z docelowych ścieżek — deployy zostaną false
+            tag="auto-${GITHUB_SHA:0:7}"
+          fi
+
+          # fallback tag jeśli pusty
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then
+            tag="auto-${GITHUB_SHA:0:7}"
+          fi
+
+          # ustawiamy outputs jobu (bez deprecated set-output)
+          printf 'deploy_api<<EOF\n%s\nEOF\n' "$deploy_api" >> $GITHUB_OUTPUT
+          printf 'deploy_frontend<<EOF\n%s\nEOF\n' "$deploy_frontend" >> $GITHUB_OUTPUT
+          printf 'deploy_admin<<EOF\n%s\nEOF\n' "$deploy_admin" >> $GITHUB_OUTPUT
+          printf 'tag<<EOF\n%s\nEOF\n' "$tag" >> $GITHUB_OUTPUT
+          
   prepare-matrix:
     runs-on: ubuntu-latest
+    needs: prepare
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - id: set-matrix
         run: |
           services=()
-          if [ "${{ github.event.inputs.build_api }}" = "true" ]; then services+=("api"); fi
-          if [ "${{ github.event.inputs.build_frontend }}" = "true" ]; then services+=("frontend"); fi
-          if [ "${{ github.event.inputs.build_admin }}" = "true" ]; then services+=("admin"); fi
+          if [ "${{ needs.prepare.outputs.deploy_api }}" = "true" ]; then services+=("api"); fi
+          if [ "${{ needs.prepare.outputs.deploy_frontend }}" = "true" ]; then services+=("frontend"); fi
+          if [ "${{ needs.prepare.outputs.deploy_admin }}" = "true" ]; then services+=("admin"); fi
 
           json=$(jq -nc --argjson arr "$(printf '%s\n' "${services[@]}" | jq -R . | jq -s .)" '{service:$arr}')
           echo "matrix=$json" >> $GITHUB_OUTPUT
@@ -47,7 +121,7 @@ jobs:
   
   deploy-frontend:
     runs-on: ubuntu-latest
-    if: github.event.inputs.build_frontend == 'true'
+    if: github.event.inputs.deploy_frontend == 'true'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
